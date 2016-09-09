@@ -1,17 +1,17 @@
 <deployment-project plugin="plugin.ezdeploy" plugin-version="1.0">
-  <configuration build-checksum="170722095" file="C:\Users\npersson3\Documents\MATLAB\GTFiber-Windows\GTFiber.prj" location="C:\Users\npersson3\Documents\MATLAB\GTFiber-Windows" name="GTFiber" preferred-package-location="C:\Users\npersson3\Documents\MATLAB\GTFiber-Windows\GTFiber\for_redistribution" preferred-package-type="package.type.exe" target="target.ezdeploy.standalone" target-name="Application Compiler">
+  <configuration build-checksum="512390546" file="C:\Users\npersson3\Documents\MATLAB\GTFiber-Windows\GTFiber.prj" location="C:\Users\npersson3\Documents\MATLAB\GTFiber-Windows" name="GTFiber" preferred-package-location="C:\Users\npersson3\Documents\MATLAB\GTFiber-Windows\GTFiber\for_redistribution" preferred-package-type="package.type.exe" target="target.ezdeploy.standalone" target-name="Application Compiler">
     <param.appname>GTFiber</param.appname>
     <param.icon />
     <param.icons />
-    <param.version>1.0</param.version>
+    <param.version>1.1</param.version>
     <param.authnamewatermark>Nils Persson</param.authnamewatermark>
     <param.email>npersson3@gatech.edu</param.email>
-    <param.company>Georgia Tech</param.company>
+    <param.company />
     <param.summary />
     <param.description />
     <param.screenshot>${PROJECT_ROOT}\my splash.png</param.screenshot>
     <param.guid />
-    <param.installpath.string>\Georgia Tech\GTFiber\</param.installpath.string>
+    <param.installpath.string>\GTFiber\</param.installpath.string>
     <param.installpath.combo>option.installpath.programfiles</param.installpath.combo>
     <param.logo />
     <param.install.notes />
@@ -41,7 +41,7 @@
     <unset>
       <param.icon />
       <param.icons />
-      <param.version />
+      <param.company />
       <param.summary />
       <param.description />
       <param.guid />
@@ -73,9 +73,7 @@
     <fileset.resources>
       <file>${PROJECT_ROOT}\Functions</file>
     </fileset.resources>
-    <fileset.package>
-      <file>${PROJECT_ROOT}\my splash.png</file>
-    </fileset.package>
+    <fileset.package />
     <fileset.depfun>
       <file>${PROJECT_ROOT}\GTFiber.fig</file>
     </fileset.depfun>

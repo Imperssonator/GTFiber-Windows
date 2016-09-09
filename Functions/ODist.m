@@ -89,19 +89,15 @@ for t = 1:12
 end
 
 if ispc
-    s_font = 28;
+    s_font=28;
 else
-    s_font = 40;
+    s_font=40;
 end
 % Add figure label and S2D label
 text('Units', 'normalized', 'Position', [-0.19 0.10], ...
     'BackgroundColor', [1 1 1], ...
     'String', ['S_{2D} = ', char(10), ' ', num2str(S, 2)],...
     'FontSize', s_font);
-text('Units', 'normalized', 'Position', [-0.2 0.94], ...
-    'BackgroundColor', [1 1 1], ...
-    'String', Label,...
-    'FontSize', 70);
 centers = 180*centers/pi; % recalculate into deg in case of saving to a text file
 
 % Fix line widths
