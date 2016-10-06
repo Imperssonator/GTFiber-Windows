@@ -1,6 +1,8 @@
 # GTFiber-Windows
 This is the public-facing repository for the Windows version of GTFiber. GTFiber is an open source program for automated quantitative analysis of images of fibrillar microstructures.
 
+See [GTFiber for Mac](https://github.com/Imperssonator/GTFiber-Mac) for Mac OSX.
+
 ## Running in MATLAB
 * [Download](https://github.com/Imperssonator/GTFiber-Windows/archive/master.zip) the repository to your local machine
 * Extract the repository to your MATLAB active directory
