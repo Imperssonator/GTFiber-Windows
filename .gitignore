@@ -2,3 +2,6 @@
 *.CSV
 *.mat
 **/*.mat
+*_FiberData
+*/ctFIREout/*
+*/Wires/*

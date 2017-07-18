@@ -30,7 +30,7 @@ function varargout = GTFiber(varargin)
 
 % Edit the above text to modify the response to help GTFiber
 
-% Last Modified by GUIDE v2.5 09-Sep-2016 15:35:48
+% Last Modified by GUIDE v2.5 16-Jun-2017 18:55:55
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -52,50 +52,28 @@ end
 % End initialization code - DO NOT EDIT
 
 
-% --- Executes just before GTFiber is made visible.
 function GTFiber_OpeningFcn(hObject, eventdata, handles, varargin)
-% This function has no output args, see OutputFcn.
-% hObject    handle to figure
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-% varargin   command line arguments to GTFiber (see VARARGIN)
 
 % Choose default command line output for GTFiber
 handles.output = hObject;
-addpath('Functions')
-addpath('Functions/coherencefilter_version5b')
-addpath('Functions/cell2csv')
+addpath(genpath(pwd))
 
 % Update handles structure
 guidata(hObject, handles);
 
-% UIWAIT makes GTFiber wait for user response (see UIRESUME)
-% uiwait(handles.mainFig);
 
-
-% --- Outputs from this function are returned to the command line.
 function varargout = GTFiber_OutputFcn(hObject, eventdata, handles) 
-% varargout  cell array for returning output args (see VARARGOUT);
-% hObject    handle to figure
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
-% Get default command line output from handles structure
 varargout{1} = handles.output;
 
 
-% --------------------------------------------------------------------
+%__________________________________________________________________________
+
+
 function Main_Callback(hObject, eventdata, handles)
-% hObject    handle to Main (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
 
-% --------------------------------------------------------------------
 function Load_Callback(hObject, eventdata, handles)
-% hObject    handle to Load (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
 [filename, folderpath] = uigetfile({'*.jpg;*.jpeg;*.tif;*.tiff;*.png;*.gif;*.bmp','All Image Files'});
 if isequal(filename, 0); return; end % Cancel button pressed
@@ -106,48 +84,55 @@ dlg_title = 'Image Scale';
 num_lines = 1;
 answer = inputdlg(prompt,dlg_title,num_lines);
 set(handles.nmWid,'String',answer{1})
-
 nmWid_Callback(hObject, eventdata, handles);
 
-imfile = [folderpath, filename];
-
 % Initialize the internal image data structure, "ims"
+imfile = [folderpath, filename];
 handles.ims = initImgData(imfile);
 set(handles.fileNameBox,'String',handles.ims.imName);
 
-figure; imshow(handles.ims.img)
-disp('performed initial thresholding')
+% Initialize the figure window and don't let the user close it
+handles = imshowGT(handles.ims.img,handles,'img_axes');
 
 guidata(hObject, handles);
 
 
-% --- Executes on button press in Coherence_Filter.
 function Coherence_Filter_Callback(hObject, eventdata, handles)
-% hObject    handle to Coherence_Filter (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
 if ~isfield(handles,'ims')
     noload = errordlg('Go to File>Load Image to load an image before filtering.');
     return
 end
 
-settings = get_settings(handles);
-[settings, ims] = pix_settings(settings,handles.ims);
-handles.ims = ims;
+% Get Settings
+handles.ims.settings = get_settings(handles);
+handles.ims = pix_settings(handles.ims);
 
-handles.ims = main_filter(handles.ims,settings);
-
-ims = handles.ims;
-% save('test','ims')
+% Run Filter Regime
+handles = main_filter(handles);
 
 guidata(hObject, handles);
 
-% --- Executes on button press in AngMap.
+
+function runStitch_Callback(hObject, eventdata, handles)
+
+if ~isfield(handles.ims,'skelTrim')
+    noload = errordlg('Go to File>Load Image to load an image, then Run Filter.');
+    return
+end
+
+% Get Settings
+handles.ims.settings = get_settings(handles);
+handles.ims = pix_settings(handles.ims);
+
+% Stitch fiber segments and calculate length
+handles.ims = StitchFibers2(handles.ims);
+handles = FiberVecPlot_stitch(handles);
+
+guidata(hObject, handles);
+
+
 function AngMap_Callback(hObject, eventdata, handles)
-% hObject    handle to AngMap (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
 if ~isfield(handles,'ims')
     noload = errordlg('Go to File>Load Image to load an image before filtering.');
@@ -159,18 +144,10 @@ if ~isfield(handles.ims,'AngMap')
     return
 end
 
-% handles.ims.nmWid = str2num(get(handles.nmWid,'String'));
-% handles.ims.pixWid = size(handles.img,2);
-% handles.ims.nmPix = handles.ims.nmWid/handles.ims.pixWid;
-
-AngleColorMap(handles.ims);
+FiberVec_ACM(handles.ims);
 
 
-% --- Executes on button press in op2d.
 function op2d_Callback(hObject, eventdata, handles)
-% hObject    handle to op2d (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
 if ~isfield(handles,'ims')
     noload = errordlg('Go to File>Load Image to load an image before filtering.');
@@ -182,61 +159,45 @@ if ~isfield(handles.ims,'AngMap')
     return
 end
 
-settings = get_settings(handles);
-settings = pix_settings(settings,handles.ims);
-settings.figSwitch = 1; % display figure if it's called by this button
-settings.figSave = 0;   % don't try to save figure when called by this button
-[handles.ims.frames, handles.ims.sfull, handles.ims.smod] = op2d_am(handles.ims, settings);
+if ~isfield(handles.ims,'Fibers')
+    nofilt = errordlg('"Stitch Fibers" must be executed before results can be displayed');
+    return
+end
+
+plotS2D(handles.ims,0);
+ODist_plot(handles.ims,0);
 
 guidata(hObject, handles);
 
 
-% --- Executes on button press in GetFiberLength.
 function GetFiberLength_Callback(hObject, eventdata, handles)
-% hObject    handle to GetFiberLength (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
 if ~isfield(handles,'ims')
     noload = errordlg('Go to File>Load Image to load an image before filtering.');
     return
 end
 
-if ~isfield(handles.ims,'AngMap')
-    nofilt = errordlg('"Run Filter" must be executed before results can be displayed');
+if ~isfield(handles.ims,'Fibers')
+    nofilt = errordlg('"Stitch Fibers" must be executed before results can be displayed');
     return
 end
 
-% Cluster fiber segments and calculate length
-settings = get_settings(handles);
-settings = pix_settings(settings,handles.ims);
-handles.ims = FiberLengths(handles.ims,settings);
-figure; 
-histogram(handles.ims.FLD,50); title('Fiber Length Distribution')
-FiberPlot(handles.ims);
-
-% Sample fiber widths along each fiber
-handles.ims = FiberWidths(handles.ims,settings);
-figure;
-histogram(handles.ims.FWD,50); title('Fiber Width Distribution');
-
-IMS = handles.ims;
-FiberData = [[IMS.Fibers(:).Length]', [IMS.Fibers(:).Width]', [IMS.Fibers(:).Length]'./[IMS.Fibers(:).Width]'];
-
-save('IMS','IMS')
-save([IMS.imName, '_FiberData'],'FiberData')
+FLD_hist(handles.ims);
+FWD_hist(handles.ims);
 
 guidata(hObject, handles);
+
 
 % --- Executes on button press in runDir.
 function runDir_Callback(hObject, eventdata, handles)
-% hObject    handle to runDir (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
-% Get folder and save file name
+% Solicit the folder to run
 folderPath = uigetdir;
-if isequal(folderPath, 0); return; end % Cancel button pressed
+
+if isequal(folderPath, 0)
+    return
+end
+
 if ispc
     separator = '\';
 else
@@ -252,34 +213,18 @@ num_lines = 1;
 fileName = inputdlg(prompt,dlg_title,num_lines);
 saveFilePath = [folderPath, fileName{1}, '.csv'];
 
-% Build up settings from GUI, turn off all figure displays
-settings = get_settings(handles);
-settings.CEDFig = 0;
-settings.topHatFig = 0;
-settings.threshFig = 0;
-settings.noiseRemFig = 0;
-settings.skelFig = 0;
-settings.skelTrimFig = 0;
-settings.figSwitch = 0;
-settings.figSave = get(handles.saveFigs,'Value');
-settings.fullOP = 1;
-
-csvCell = runDir(folderPath,settings);
-% FLCell = runDirFLD(folderPath,settings);
-cell2csv(saveFilePath, csvCell, ',', 1999, '.');
-% save([folderPath, fileName{1}, '.mat'],'csvCell')
+run_directory(handles,folderPath,saveFilePath);
 
 
-% --- Executes on button press in runDirFLD.
-function runDirFLD_Callback(hObject, eventdata, handles)
-% hObject    handle to runDirFLD (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
+function chainStacker_Callback(hObject, eventdata, handles)
 
-
-% Get folder and save file name
+% Solicit the folder to run
 folderPath = uigetdir;
-if isequal(folderPath, 0); return; end % Cancel button pressed
+
+if isequal(folderPath, 0)
+    return
+end
+
 if ispc
     separator = '\';
 else
@@ -289,89 +234,53 @@ end
 folderPath = [folderPath, separator];
 
 % Get name for results file
-% prompt = {'Save results with file name (no extension necessary):'};
-% dlg_title = 'Save File Name';
-% num_lines = 1;
-% fileName = inputdlg(prompt,dlg_title,num_lines);
-% saveFilePath = [folderPath, fileName{1}, '.csv'];
+prompt = {'Save results with file name (no extension necessary):'};
+dlg_title = 'Save File Name';
+num_lines = 1;
+fileName = inputdlg(prompt,dlg_title,num_lines);
+saveFilePath = [folderPath, fileName{1}, '.csv'];
 
-% Build up settings from GUI, turn off all figure displays
-settings = get_settings(handles);
-settings.CEDFig = 0;
-settings.topHatFig = 0;
-settings.threshFig = 0;
-settings.noiseRemFig = 0;
-settings.skelFig = 0;
-settings.skelTrimFig = 0;
-settings.figSwitch = 0;
-settings.figSave = get(handles.saveFigs,'Value');
-settings.fullOP = 1;
+% Solicit range of molecular weight and PDI for simulations
+prompt = {'List of Mn to use', 'List of PDI to use', 'Number of simulations per point'};
+dlg_title = 'MW Parameters';
+num_lines = 3;
+Mn_input = inputdlg(prompt,dlg_title,num_lines);
 
-runDirFLD(folderPath,settings);
-% save([folderPath, fileName{1}, '.mat'],'csvCell')
+Mn_vec = str2num(Mn_input{1});
+PDI_vec = str2num(Mn_input{2});
+nruns = str2num(Mn_input{3});
+
+run_directory_CS(handles,folderPath,saveFilePath,Mn_vec,PDI_vec,nruns);
+
+
+
+%__________________________________________________________________________
+% Fields for image processing settings
 
 
 function gauss_Callback(hObject, eventdata, handles)
-% hObject    handle to gauss (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
-% Hints: get(hObject,'String') returns contents of gauss as text
-%        str2double(get(hObject,'String')) returns contents of gauss as a double
-
-
-% --- Executes during object creation, after setting all properties.
 function gauss_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to gauss (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
 
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
+    
 end
 
 
 function rho_Callback(hObject, eventdata, handles)
-% hObject    handle to rho (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
-% Hints: get(hObject,'String') returns contents of rho as text
-%        str2double(get(hObject,'String')) returns contents of rho as a double
-
-
-% --- Executes during object creation, after setting all properties.
 function rho_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to rho (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
 
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
 
 
 function difftime_Callback(hObject, eventdata, handles)
-% hObject    handle to difftime (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
-% Hints: get(hObject,'String') returns contents of difftime as text
-%        str2double(get(hObject,'String')) returns contents of difftime as a double
-
-
-% --- Executes during object creation, after setting all properties.
 function difftime_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to difftime (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
 
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
@@ -379,44 +288,18 @@ end
 
 
 function noiseArea_Callback(hObject, eventdata, handles)
-% hObject    handle to noiseArea (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
-% Hints: get(hObject,'String') returns contents of noiseArea as text
-%        str2double(get(hObject,'String')) returns contents of noiseArea as a double
-
-
-% --- Executes during object creation, after setting all properties.
 function noiseArea_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to noiseArea (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
 
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
 
 
 function minFibLen_Callback(hObject, eventdata, handles)
-% hObject    handle to minFibLenText (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
-% Hints: get(hObject,'String') returns contents of minFibLenText as text
-%        str2double(get(hObject,'String')) returns contents of minFibLenText as a double
-
-
-% --- Executes during object creation, after setting all properties.
 function minFibLen_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to minFibLenText (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
 
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
@@ -424,284 +307,87 @@ end
 
 
 function tophatSize_Callback(hObject, eventdata, handles)
-% hObject    handle to tophatSize (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
-% Hints: get(hObject,'String') returns contents of tophatSize as text
-%        str2double(get(hObject,'String')) returns contents of tophatSize as a double
-
-
-% --- Executes during object creation, after setting all properties.
 function tophatSize_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to tophatSize (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
 
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
-
-
-
-function gridStep_Callback(hObject, eventdata, handles)
-% hObject    handle to gridStep (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hints: get(hObject,'String') returns contents of gridStep as text
-%        str2double(get(hObject,'String')) returns contents of gridStep as a double
-
-
-% --- Executes during object creation, after setting all properties.
-function gridStep_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to gridStep (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
-
-
-
-function frameStep_Callback(hObject, eventdata, handles)
-% hObject    handle to frameStep (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hints: get(hObject,'String') returns contents of frameStep as text
-%        str2double(get(hObject,'String')) returns contents of frameStep as a double
-
-
-% --- Executes during object creation, after setting all properties.
-function frameStep_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to frameStep (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
-
 
 
 function nmWid_Callback(hObject, eventdata, handles)
-% hObject    handle to nmWid (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hints: get(hObject,'String') returns contents of nmWid as text
-%        str2double(get(hObject,'String')) returns contents of nmWid as a double
 
 nmWid = str2num(get(handles.nmWid,'String'));
-if ~isempty(nmWid)
-    set(handles.gauss,'String',num2str(nmWid*10/5000));
-    set(handles.rho,'String',num2str(nmWid*30/5000));
-    set(handles.tophatSize,'String',num2str(nmWid*30/5000));
-    set(handles.noiseArea,'String',num2str(nmWid^2*1500/5000^2));
-    set(handles.maxBranchSize,'String',num2str(nmWid*80/5000));
+
+if get(handles.scaleParams,'Value')
+    if ~isempty(nmWid)
+        set(handles.gauss,'String',num2str(nmWid*5/5000));
+        set(handles.rho,'String',num2str(nmWid*15/5000));
+        set(handles.tophatSize,'String',num2str(nmWid*40/5000));
+        set(handles.noiseArea,'String',num2str(nmWid*1500/5000));
+        set(handles.maxBranchSize,'String',num2str(nmWid*60/5000));
+        set(handles.stitchGap,'String',num2str(nmWid*60/5000));
+    end
 end
 
 guidata(hObject, handles);
 
-
-
-% --- Executes during object creation, after setting all properties.
 function nmWid_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to nmWid (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
 
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
 
 
-% --- Executes on button press in CEDFig.
-function CEDFig_Callback(hObject, eventdata, handles)
-% hObject    handle to CEDFig (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hint: get(hObject,'Value') returns toggle state of CEDFig
-
-
-% --- Executes on button press in topHatFig.
-function topHatFig_Callback(hObject, eventdata, handles)
-% hObject    handle to topHatFig (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hint: get(hObject,'Value') returns toggle state of topHatFig
-
-
-% --- Executes on button press in noiseRemFig.
-function noiseRemFig_Callback(hObject, eventdata, handles)
-% hObject    handle to noiseRemFig (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hint: get(hObject,'Value') returns toggle state of noiseRemFig
-
-
-% --- Executes on button press in threshFig.
-function threshFig_Callback(hObject, eventdata, handles)
-% hObject    handle to threshFig (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hint: get(hObject,'Value') returns toggle state of threshFig
-
-
-% --- Executes on button press in skelTrimFig.
-function skelTrimFig_Callback(hObject, eventdata, handles)
-% hObject    handle to skelTrimFig (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hint: get(hObject,'Value') returns toggle state of skelTrimFig
-
-
-% --- Executes on selection change in threshMethod.
 function threshMethod_Callback(hObject, eventdata, handles)
-% hObject    handle to threshMethod (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
-% Hints: contents = cellstr(get(hObject,'String')) returns threshMethod contents as cell array
-%        contents{get(hObject,'Value')} returns selected item from threshMethod
-
-
-% --- Executes during object creation, after setting all properties.
 function threshMethod_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to threshMethod (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
 
-% Hint: popupmenu controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
-
 
 
 function globalThresh_Callback(hObject, eventdata, handles)
-% hObject    handle to globalThresh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
-% Hints: get(hObject,'String') returns contents of globalThresh as text
-%        str2double(get(hObject,'String')) returns contents of globalThresh as a double
-
-
-% --- Executes during object creation, after setting all properties.
 function globalThresh_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to globalThresh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
 
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
-
 
 
 function maxBranchSize_Callback(hObject, eventdata, handles)
-% hObject    handle to maxBranchSize (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
-% Hints: get(hObject,'String') returns contents of maxBranchSize as text
-%        str2double(get(hObject,'String')) returns contents of maxBranchSize as a double
-
-
-% --- Executes during object creation, after setting all properties.
 function maxBranchSize_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to maxBranchSize (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
 
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
 
 
-% --- Executes on button press in skelFig.
-function skelFig_Callback(hObject, eventdata, handles)
-% hObject    handle to skelFig (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hint: get(hObject,'Value') returns toggle state of skelFig
-
-
-
-% --- Executes on button press in saveFigs.
 function saveFigs_Callback(hObject, eventdata, handles)
-% hObject    handle to saveFigs (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hint: get(hObject,'Value') returns toggle state of saveFigs
 
 
-% --- Executes during object creation, after setting all properties.
 function mainFig_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to mainFig (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
 
 
-% --- Executes during object creation, after setting all properties.
 function widthText_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to widthText (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-
 
 
 function fibWidSamps_Callback(hObject, eventdata, handles)
-% hObject    handle to fibWidSamps (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
 
-% Hints: get(hObject,'String') returns contents of fibWidSamps as text
-%        str2double(get(hObject,'String')) returns contents of fibWidSamps as a double
-
-
-% --- Executes during object creation, after setting all properties.
 function fibWidSamps_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to fibWidSamps (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
 
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
 
 
-% --------------------------------------------------------------------
-function Make_Gif_Callback(hObject, eventdata, handles)
-% hObject    handle to Make_Gif (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
+%__________________________________________________________________________
 
+
+function Make_Gif_Callback(hObject, eventdata, handles)
 if ~isfield(handles,'ims')
     noload = errordlg('Go to File>Load Image to load an image before filtering.');
     return
@@ -719,19 +405,198 @@ gif_op2d_am(handles.ims,settings);
 guidata(hObject, handles);
 
 
-% --- Executes on button press in invertColor.
 function invertColor_Callback(hObject, eventdata, handles)
-% hObject    handle to invertColor (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hint: get(hObject,'Value') returns toggle state of invertColor
 
 switch get(handles.invertColor,'Value')
     case 1
-        figure; imshow(imcomplement(handles.ims.gray));
+        handles=imshowGT(imcomplement(handles.ims.gray),handles,'img_axes');
     case 0
-        figure; imshow(handles.ims.gray)
+        handles=imshowGT(handles.ims.gray,handles,'img_axes');
 end
 
 guidata(hObject, handles);
+
+%__________________________________________________________________________
+% Buttons for switching what figure is displayed in the image processing
+% preview window
+
+function showCED_ButtonDownFcn(hObject, eventdata, handles)
+
+
+function showTopHat_ButtonDownFcn(hObject, eventdata, handles)
+
+
+function showThresh_ButtonDownFcn(hObject, eventdata, handles)
+
+
+function showClean_ButtonDownFcn(hObject, eventdata, handles)
+
+
+function showSkel_ButtonDownFcn(hObject, eventdata, handles)
+
+
+function showSkelTrim_ButtonDownFcn(hObject, eventdata, handles)
+
+
+function showSegs_ButtonDownFcn(hObject, eventdata, handles)
+
+
+function showFibers_ButtonDownFcn(hObject, eventdata, handles)
+
+
+function showImg_ButtonDownFcn(hObject, eventdata, handles)
+
+
+function showImg_Callback(hObject, eventdata, handles)
+
+if isfield(handles.ims,'img')
+    handles=imshowGT(handles.ims.img,handles,'img_axes');
+end
+guidata(hObject, handles);
+
+
+function showCED_Callback(hObject, eventdata, handles)
+
+if isfield(handles.ims,'CEDgray')
+    handles=imshowGT(handles.ims.CEDgray,handles,'img_axes');
+end
+guidata(hObject, handles);
+
+
+function showTopHat_Callback(hObject, eventdata, handles)
+
+if isfield(handles.ims,'CEDtophat')
+    handles=imshowGT(handles.ims.CEDtophat,handles,'img_axes');
+end
+guidata(hObject, handles);
+
+
+function showThresh_Callback(hObject, eventdata, handles)
+
+if isfield(handles.ims,'CEDbw')
+    handles=imshowGT(handles.ims.CEDbw,handles,'img_axes');
+end
+guidata(hObject, handles);
+
+
+function showClean_Callback(hObject, eventdata, handles)
+
+if isfield(handles.ims,'CEDclean')
+    handles=imshowGT(handles.ims.CEDclean,handles,'img_axes');
+end
+guidata(hObject, handles);
+
+
+function showSkel_Callback(hObject, eventdata, handles)
+
+if isfield(handles.ims,'skel')
+    handles=imshowGT(handles.ims.skel,handles,'img_axes');
+end
+guidata(hObject, handles);
+
+
+function showSkelTrim_Callback(hObject, eventdata, handles)
+
+if isfield(handles.ims,'skelTrim')
+    handles=imshowGT(handles.ims.skelTrim,handles,'img_axes');
+end
+guidata(hObject, handles);
+
+
+function showSegs_Callback(hObject, eventdata, handles)
+
+if isfield(handles.ims,'fibSegs')
+    handles=FiberVecPlot_segs(handles);
+end
+guidata(hObject, handles);
+
+
+function showFibers_Callback(hObject, eventdata, handles)
+
+if isfield(handles.ims,'Fibers')
+    handles=FiberVecPlot_stitch(handles);
+end
+guidata(hObject, handles);
+
+%__________________________________________________________________________
+% Fiber Stitching Setting Fields
+
+function curvLen_Callback(hObject, eventdata, handles)
+
+function curvLen_CreateFcn(hObject, eventdata, handles)
+
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+function maxCurv_Callback(hObject, eventdata, handles)
+
+function maxCurv_CreateFcn(hObject, eventdata, handles)
+
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+function minWidth_Callback(hObject, eventdata, handles)
+
+function minWidth_CreateFcn(hObject, eventdata, handles)
+
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+function maxWidth_Callback(hObject, eventdata, handles)
+
+function maxWidth_CreateFcn(hObject, eventdata, handles)
+
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+function fiberStep_Callback(hObject, eventdata, handles)
+
+function fiberStep_CreateFcn(hObject, eventdata, handles)
+
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function stitchGap_Callback(hObject, eventdata, handles)
+
+function stitchGap_CreateFcn(hObject, eventdata, handles)
+
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+function scaleParams_Callback(hObject, eventdata, handles)
+
+
+
+function edit20_Callback(hObject, eventdata, handles)
+% hObject    handle to minFibLen (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of minFibLen as text
+%        str2double(get(hObject,'String')) returns contents of minFibLen as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit20_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to minFibLen (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
