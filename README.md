@@ -3,7 +3,7 @@ This is the public-facing repository for the Windows version of GTFiber. GTFiber
 
 ![Imgur](http://i.imgur.com/GDL2HQP.png)
 
-See [GTFiber for Mac](https://github.com/Imperssonator/GTFiber-Mac/tree/v2-new-match) for Mac version.
+See [GTFiber2 for Mac](https://github.com/Imperssonator/GTFiber2-Mac) for Mac version.
 See [GTFiber 1.1](https://github.com/Imperssonator/GTFiber-Mac) for the old version that did not vectorize fibers (faster but less rigorous analysis)
 
 ## Installing the Standalone App
